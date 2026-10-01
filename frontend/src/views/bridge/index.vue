@@ -3,10 +3,10 @@
     <header class="page-head">
       <div>
         <h2>桥梁定检管理</h2>
-        <p class="page-desc">维护检测记录，围绕检测编号、桥梁名称、检测类型、检测日期做登记、筛选与状态流转。</p>
+        <p class="page-desc">集中签发链：现场复核 → 签发 → 限载投影，签发结论同步检测清单、工程待办和限载页面。</p>
       </div>
       <div class="page-actions">
-        <button class="btn primary" type="button" @click="openCreate">登记检测记录</button>
+        <button class="btn primary" type="button" @click="issueBatch">集中签发（已复核）</button>
         <button class="btn" type="button" @click="exportRows">导出桥梁定检清单</button>
       </div>
     </header>
@@ -38,15 +38,9 @@
         <tr v-for="row in rows" :key="String(row.id)">
           <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
           <td class="row-actions">
-            <button
-              v-for="action in actions"
-              :key="action"
-              class="link"
-              type="button"
-              @click="runAction(action, row)"
-            >
-              {{ action }}
-            </button>
+            <button class="link" type="button" @click="reviewRow(row)">现场复核</button>
+            <button class="link" type="button" @click="issueRow(row)">签发</button>
+            <button class="link" type="button" @click="projectRow(row)">生成限载</button>
           </td>
         </tr>
         <tr v-if="!rows.length">
@@ -58,6 +52,7 @@
     <footer class="page-foot">
       <span>共 {{ total }} 条桥梁定检记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
+      <span v-else-if="noticeMessage" class="notice-text">{{ noticeMessage }}</span>
     </footer>
   </section>
 </template>
@@ -70,14 +65,13 @@ import { request } from '@/api/client'
 type Row = Record<string, string | number | null>
 
 const ENDPOINT = '/api/bridge'
-const columns = ["检测编号", "桥梁名称", "检测类型", "检测日期", "技术状况评分", "主要病害", "检测单位", "检测状态"]
-const actions = ["开始检测", "完成评定", "归档报告"]
-const statuses = ["待检测", "检测中", "已评定", "已归档"]
-const stats = [{"label": "待检测桥梁", "value": 0}, {"label": "检测中桥梁", "value": 0}, {"label": "已评定桥梁", "value": 0}]
+const columns = ["检测编号", "桥梁名称", "检测类型", "检测日期", "技术状况评分", "评定等级", "评分版本", "签发状态", "主要病害", "检测单位"]
+const stats = [{"label": "待复核", "value": 0}, {"label": "已复核待签发", "value": 0}, {"label": "已限载", "value": 0}]
 
 const rows = ref<Row[]>([])
 const total = ref(0)
 const errorMessage = ref('')
+const noticeMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
 
@@ -90,33 +84,83 @@ function exportRows() {
   window.open(`${ENDPOINT}/export`, '_blank')
 }
 
-function openCreate() {
-  errorMessage.value = '检测记录登记入口尚未接入审批流'
+async function post(path: string, values: Record<string, unknown>) {
+  const response = await request(`${ENDPOINT}${path}`, {
+    method: 'POST',
+    body: JSON.stringify({ values }),
+  })
+  const payload = (await response.json()) as { ok: boolean; message: string }
+  if (!payload.ok) {
+    throw new Error(payload.message)
+  }
+  return payload
 }
 
-async function runAction(action: string, row: Row) {
+async function reviewRow(row: Row) {
   errorMessage.value = ''
+  noticeMessage.value = ''
+  const input = window.prompt(`现场复核 ${row.检测编号}：请输入技术状况评分（0-100）`)
+  if (input === null) {
+    return
+  }
   try {
-    const response = await request(`${ENDPOINT}/${row.id}/actions`, {
-      method: 'POST',
-      body: JSON.stringify({ action }),
-    })
-    if (!response.ok) {
-      throw new Error('桥梁定检动作未生效，请稍后重试')
-    }
+    const payload = await post(`/${row.id}/review`, { 评分: input })
+    noticeMessage.value = payload.message
     await reload()
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '桥梁定检操作失败'
+    errorMessage.value = error instanceof Error ? error.message : '现场复核失败'
+  }
+}
+
+async function issueRow(row: Row) {
+  errorMessage.value = ''
+  noticeMessage.value = ''
+  try {
+    const payload = await post(`/${row.id}/issue`, {})
+    noticeMessage.value = payload.message
+    await reload()
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '签发失败'
+  }
+}
+
+async function projectRow(row: Row) {
+  errorMessage.value = ''
+  noticeMessage.value = ''
+  try {
+    const payload = await post(`/${row.id}/project-load`, {})
+    noticeMessage.value = payload.message
+    await reload()
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '生成限载失败'
+  }
+}
+
+async function issueBatch() {
+  errorMessage.value = ''
+  noticeMessage.value = ''
+  const codes = rows.value
+    .filter((row) => row['签发状态'] === '已复核')
+    .map((row) => String(row['检测编号']))
+  if (!codes.length) {
+    errorMessage.value = '当前列表没有已复核待签发的检测记录'
+    return
+  }
+  try {
+    const payload = await post('/issuance/batches', { 检测编号: codes })
+    noticeMessage.value = payload.message
+    await reload()
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '集中签发失败'
   }
 }
 
 async function reload() {
-  errorMessage.value = ''
   const query = new URLSearchParams(filters.value as Record<string, string>).toString()
   try {
     const response = await request(`${ENDPOINT}?${query}`)
     if (!response.ok) {
-      throw new Error('检测记录列表读取失败')
+      throw new Error('桥梁定检列表读取失败')
     }
     const payload = await response.json()
     rows.value = payload.items ?? []

@@ -4,7 +4,10 @@
 """
 from __future__ import annotations
 
-from typing import Any
+import copy
+import threading
+from contextlib import contextmanager
+from typing import Any, Iterator
 
 from app.seed import SEED_ROWS
 
@@ -14,6 +17,28 @@ class Store:
         self._tables: dict[str, list[dict[str, Any]]] = {
             name: [dict(row) for row in rows] for name, rows in SEED_ROWS.items()
         }
+        # 签发链这类跨模块写操作必须串行化：并发签发按检测编号只生效一版。
+        self._lock = threading.RLock()
+
+    @property
+    def lock(self) -> threading.RLock:
+        return self._lock
+
+    @contextmanager
+    def transaction(self, *modules: str) -> Iterator[None]:
+        """把若干模块的表当作一个事务：任一写失败，全部恢复到进入前的快照。
+
+        签发结论要同时落到检测清单、工程待办和限载页面，任一落库失败整体回滚，
+        不允许留下写了一半的限载投影。
+        """
+        with self._lock:
+            snapshot = {name: copy.deepcopy(self.rows(name)) for name in modules}
+            try:
+                yield
+            except Exception:
+                for name, rows in snapshot.items():
+                    self._tables[name] = rows
+                raise
 
     def module_names(self) -> list[str]:
         return sorted(self._tables)

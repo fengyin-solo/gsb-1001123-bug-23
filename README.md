@@ -74,3 +74,21 @@ npm run dev
   `backend/app/routers/<模块>.py`，业务规则在 `backend/app/services/<模块>.py`。
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
+
+## 桥梁定检集中签发链
+
+桥梁定检模块在通用状态流转之外，还有一条单向签发链：
+**现场复核 → 签发 → 限载投影**，跳级由服务端拒绝。
+
+- `POST /api/bridge/{id}/review` 现场复核：每次复核生成一个评分版本，历史等级按检测时版本保留。
+- `POST /api/bridge/{id}/issue` 签发：结论在同一事务里回写检测清单（bridge）、
+  工程待办（project）和限载页面（bridge_info），任一落库失败整体回滚；
+  重复签发被拦截，不新增重复待办；可带 `expect_version` 做并发校验，
+  冲突以最后一次现场复核为准。
+- `POST /api/bridge/{id}/project-load` 限载投影：未签发不得生成限载；按桥梁编号
+  upsert 投影，限载页面只保留最新结论，不重复显示旧评分。
+- `POST /api/bridge/issuance/batches` 集中签发：整批一个事务，成功只保留一个版本，
+  失败回滚不留半批限载；`POST /api/bridge/issuance/batches/{batch_id}/resume`
+  从断点续做，已生效编号自动跳过。
+- 存量检测记录在服务启动时自动迁移：待检测/检测中 → 待复核，已评定 → 已复核，
+  已归档 → 已签发，按采集顺序（检测日期）回填评分版本。

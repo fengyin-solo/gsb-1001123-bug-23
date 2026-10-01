@@ -70,7 +70,7 @@ import { request } from '@/api/client'
 type Row = Record<string, string | number | null>
 
 const ENDPOINT = '/api/bridge_info'
-const columns = ["桥梁编号", "桥梁名称", "桥型结构", "跨径组合", "设计荷载", "建成年份", "上次评定等级", "桥梁状态"]
+const columns = ["桥梁编号", "桥梁名称", "桥型结构", "跨径组合", "设计荷载", "建成年份", "上次评定等级", "评分版本", "限载值", "桥梁状态"]
 const actions = ["设置限载", "安排加固", "启动重建"]
 const statuses = ["正常", "限载", "加固", "重建"]
 const stats = [{"label": "正常桥梁", "value": 0}, {"label": "限载桥梁", "value": 0}, {"label": "加固桥梁", "value": 0}]
