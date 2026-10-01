@@ -6,6 +6,7 @@ const Patrol = () => import('@/views/patrol/index.vue')
 const Pavement = () => import('@/views/pavement/index.vue')
 const Bridge = () => import('@/views/bridge/index.vue')
 const BridgeInfo = () => import('@/views/bridge_info/index.vue')
+const LoadLimit = () => import('@/views/load_limit/index.vue')
 const Tunnel = () => import('@/views/tunnel/index.vue')
 const TrafficFacility = () => import('@/views/traffic_facility/index.vue')
 const Drainage = () => import('@/views/drainage/index.vue')
@@ -29,6 +30,7 @@ const router = createRouter({
     { path: '/pavement', name: 'pavement', component: Pavement },
     { path: '/bridge', name: 'bridge', component: Bridge },
     { path: '/bridge_info', name: 'bridge_info', component: BridgeInfo },
+    { path: '/load_limit', name: 'load_limit', component: LoadLimit },
     { path: '/tunnel', name: 'tunnel', component: Tunnel },
     { path: '/traffic_facility', name: 'traffic_facility', component: TrafficFacility },
     { path: '/drainage', name: 'drainage', component: Drainage },
